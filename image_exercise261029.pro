@@ -5,6 +5,21 @@
 ;   .compile zh_practice
 ;   zh_practice
 ;--------------------------------------------------------------------
+FUNCTION getBand, img, bandNo
+  ; 获取图像维度
+  dim = SIZE(img, /N_DIMENSIONS)
+
+  ; 如果维度是 2 (灰度图)，直接返回原图
+  IF dim EQ 2 THEN RETURN, img
+
+  ; 如果维度是 3 (RGB/多波段图)，返回指定波段
+  IF dim EQ 3 THEN RETURN, img[bandNo, *, *]
+
+  ; 如果都不是，提示错误并返回空
+  PRINT, 'Error: Image dimension must be 2 or 3.'
+  RETURN, !NULL
+END
+
 pro image_exercise261029
 
   ;================ 一、多波段遥感图像：读入 -> 查看 -> 显示单波段 -> 另存 ====
@@ -19,12 +34,18 @@ pro image_exercise261029
   TVSCL, band1                           ; 按数值范围自动拉伸后显示
   WRITE_TIFF, 'D:\Temp\output\band1.tif', band1         ; 单波段另存
 
+  ; ==========================================================
+  ; 获取图像波段函数 (根据 PPT 截图编写)
+  ; 输入参数：
+  ;   img    - 输入的图像数组
+  ;   bandNo - 需要提取的波段索引 (如 0, 1, 2)
+  ; ==========================================================
+
   ;================ 二、三个波段合成 RGB 图像 ===============================
   ; 提取三个波段
-  R = img[0,*,*]
-  G = img[1,*,*]
-  B = img[2,*,*]
-
+  R = getBand(img, 0)
+  G = getBand(img, 1)
+  B = getBand(img, 2)
   ; 拉伸到 0-255
   R = BYTSCL(R)
   G = BYTSCL(G)
