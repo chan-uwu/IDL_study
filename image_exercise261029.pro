@@ -6,81 +6,111 @@
 ;   zh_practice
 ;--------------------------------------------------------------------
 FUNCTION getBand, img, bandNo
-  ; 获取图像维度
   dim = SIZE(img, /N_DIMENSIONS)
-
-  ; 如果维度是 2 (灰度图)，直接返回原图
   IF dim EQ 2 THEN RETURN, img
-
-  ; 如果维度是 3 (RGB/多波段图)，返回指定波段
   IF dim EQ 3 THEN RETURN, img[bandNo, *, *]
-
-  ; 如果都不是，提示错误并返回空
   PRINT, 'Error: Image dimension must be 2 or 3.'
   RETURN, !NULL
 END
 
 pro image_exercise261029
 
-  ;================ 一、多波段遥感图像：读入 -> 查看 -> 显示单波段 -> 另存 ====
-  file = DIALOG_PICKFILE(TITLE='Select a multi-band TIFF image')
-  img  = READ_TIFF(file)
-  HELP, img                              ; 看波段数、行列数、数据类型
+  COMPILE_OPT IDL2
+  
+  COMMON IMG_DATA, current_img
+  
+  ; 创建基础容器
+  base = WIDGET_BASE(TITLE='IDL Image Viewer - Exercise', /COLUMN)
+  
+  ; 创建按钮区域
+  btn_base = WIDGET_BASE(base, /ROW)
+  btn_load = WIDGET_BUTTON(btn_base, VALUE='1. Load & Display', UVALUE='ACT_LOAD')
+  btn_band = WIDGET_BUTTON(btn_base, VALUE='2. Extract Band & Save', UVALUE='ACT_BAND')
+  btn_invert = WIDGET_BUTTON(btn_base, VALUE='3. Invert R-Band', UVALUE='ACT_INVERT')
+  btn_rgb = WIDGET_BUTTON(btn_base, VALUE='4. RGB Composite', UVALUE='ACT_RGB')
+  
+  ; 【关键修复】：给绘图区域加上 UNAME='MY_DRAW'
+  draw = WIDGET_DRAW(base, XSIZE=600, YSIZE=500, UNAME='MY_DRAW')
+  
+  WIDGET_CONTROL, base, /REALIZE
+  XMANAGER, 'gui_image_exercise', base, EVENT_HANDLER='gui_event', /NO_BLOCK
+END
 
-  band1 = img[0,*,*]                     ; 第 1 波段（首维为波段）
-  ; band1 = img[*,*,0]                   ; 若图像是 [列,行,波段] 排列，改用这一句
 
-  WINDOW, 0, TITLE='Band 1'
-  TVSCL, band1                           ; 按数值范围自动拉伸后显示
-  WRITE_TIFF, 'D:\Temp\output\band1.tif', band1         ; 单波段另存
-
-  ; ==========================================================
-  ; 获取图像波段函数 (根据 PPT 截图编写)
-  ; 输入参数：
-  ;   img    - 输入的图像数组
-  ;   bandNo - 需要提取的波段索引 (如 0, 1, 2)
-  ; ==========================================================
-
-  ;================ 二、三个波段合成 RGB 图像 ===============================
-  ; 提取三个波段
-  R = getBand(img, 0)
-  G = getBand(img, 1)
-  B = getBand(img, 2)
-  ; 拉伸到 0-255
-  R = BYTSCL(R)
-  G = BYTSCL(G)
-  B = BYTSCL(B)
-
-  ; 组成 RGB 图像
-  sz     = SIZE(img, /DIMENSIONS)
-  width  = sz[1]
-  height = sz[2]
-  rgb = BYTARR(3, width, height)
-  rgb[0,*,*] = R
-  rgb[1,*,*] = G
-  rgb[2,*,*] = B
-
-  ; 显示
-  WINDOW, 1, TITLE='RGB composite'
-  TV, rgb, TRUE=1
-  ; 保存
-  WRITE_TIFF, 'rgb_composite.tif', rgb
-
-  ;================ 三、常规彩色图像：读入 -> 分波段 -> 存 PNG ==============
-  file2 = DIALOG_PICKFILE(TITLE='Select a color image (jpg/png/bmp)')
-  img2  = READ_IMAGE(file2)
-  HELP, img2
-
-  ; 分波段（课件要求：看清 [3,w,h] 的取法）
-  R2 = img2[0,*,*]
-  G2 = img2[1,*,*]
-  B2 = img2[2,*,*]
-
-  ; 保存：WRITE_PNG 只吃 2 个参数（文件名+三波段图像）或 5 个（文件名+二维图像+R+G+B）
-  WRITE_PNG, 'D:\Temp\output\rgb_saved.png', img2
-
-  ;================ 四、R 波段反色 ==========================================
-  img2[0,*,*] = 255B - img2[0,*,*]
-  WRITE_PNG, 'D:\Temp\output\R_inverted.png', img2
-
-end
+; ==========================================================
+; 3. 事件处理函数
+; ==========================================================
+PRO gui_event, event
+  COMPILE_OPT IDL2
+  
+  COMMON IMG_DATA, current_img
+  
+  ; 获取触发事件的控件 UVALUE
+  WIDGET_CONTROL, event.id, GET_UVALUE=action_id
+  
+  ; 如果点击的是没有 UVALUE 的组件（比如窗口本身），直接返回
+  IF (N_ELEMENTS(action_id) EQ 0) THEN RETURN
+  
+  ; 【关键修复】：通过 UNAME 查找画布组件，再获取底层窗口 ID
+  drawID = WIDGET_INFO(event.top, FIND_BY_UNAME='MY_DRAW')
+  WIDGET_CONTROL, drawID, GET_VALUE=winID
+  
+  CASE action_id OF
+    'ACT_LOAD': BEGIN
+      file = DIALOG_PICKFILE(TITLE='Select Image', FILTER='*.tif;*.jpg;*.png')
+      IF (file EQ '') THEN RETURN
+      
+      current_img = READ_IMAGE(file)
+      HELP, current_img
+      
+      WSET, winID
+      dims = SIZE(current_img, /N_DIMENSIONS)
+      IF dims EQ 3 THEN TVSCL, current_img, TRUE=1 ELSE TVSCL, current_img
+    END
+    
+    'ACT_BAND': BEGIN
+      IF (N_ELEMENTS(current_img) EQ 0) THEN RETURN
+      band1 = getBand(current_img, 0)
+      
+      WSET, winID
+      TVSCL, band1
+      
+      out_file = DIALOG_PICKFILE(TITLE='Save Band 1', DEFAULT_EXTENSION='tif', /WRITE)
+      IF (out_file NE '') THEN WRITE_TIFF, out_file, BYTE(band1)
+    END
+    
+    'ACT_INVERT': BEGIN
+      IF (N_ELEMENTS(current_img) EQ 0) THEN RETURN
+      R_band = getBand(current_img, 0)
+      R_inv = 255B - BYTE(R_band)
+      
+      WSET, winID
+      TVSCL, R_inv
+      
+      out_file = DIALOG_PICKFILE(TITLE='Save Inverted Image', DEFAULT_EXTENSION='png', /WRITE)
+      IF (out_file NE '') THEN WRITE_IMAGE, out_file, R_inv
+    END
+    
+    'ACT_RGB': BEGIN
+      IF (N_ELEMENTS(current_img) EQ 0) THEN RETURN
+      dims = SIZE(current_img, /N_DIMENSIONS)
+      IF (dims NE 3) THEN RETURN
+      
+      R = BYTSCL(getBand(current_img, 0))
+      G = BYTSCL(getBand(current_img, 1))
+      B = BYTSCL(getBand(current_img, 2))
+      
+      sz = SIZE(current_img, /DIMENSIONS)
+      rgb = BYTARR(3, sz[1], sz[2])
+      rgb[0, *, *] = R
+      rgb[1, *, *] = G
+      rgb[2, *, *] = B
+      
+      WSET, winID
+      TV, rgb, TRUE=1
+      
+      out_file = DIALOG_PICKFILE(TITLE='Save RGB Composite', DEFAULT_EXTENSION='tif', /WRITE)
+      IF (out_file NE '') THEN WRITE_TIFF, out_file, rgb
+    END
+  ENDCASE
+END
